@@ -3,83 +3,92 @@ import pandas as pd
 import plotly.express as px
 import os
 
-# Configuration de la page
-st.set_page_config(page_title="Collecte de Données Académiques", layout="wide")
+# Configuration
+st.set_page_config(page_title="Mobilité Urbaine Yaoundé", layout="wide")
 
-# Fichier de stockage des données
-DATA_FILE = "data_etudiants.csv"
+# Fichier de stockage
+DATA_FILE = "transport_yaounde.csv"
 
-# Fonction pour charger les données
 def load_data():
     if os.path.exists(DATA_FILE):
         return pd.read_csv(DATA_FILE)
     else:
-        return pd.DataFrame(columns=["Nom", "Heures_Etude", "Heures_Sommeil", "Presence_Cours", "Social_Media", "GPA"])
+        return pd.DataFrame(columns=["Quartier_Origine", "Quartier_Destination", "Mode_Transport", "Duree_Min", "Prix_CFA", "Heure_Depart"])
 
-# Titre de l'application
-st.title("📊 Collecte & Analyse de la Performance Académique")
+# --- INTERFACE ---
+st.title("🚗 Analyse de la Mobilité Urbaine à Yaoundé")
 st.markdown("""
-Cette application collecte des données sur les habitudes des étudiants pour analyser leur impact sur la réussite scolaire.
-*Réalisé pour le cours INF 232.*
+Cette application collecte des données sur les déplacements des citoyens à Yaoundé pour optimiser la compréhension du transport urbain.
+*Module INF 232 - Analyse de données.*
 """)
 
-# --- SECTION 1 : COLLECTE DES DONNÉES ---
-st.sidebar.header("📝 Formulaire de Saisie")
-with st.sidebar.form("survey_form", clear_on_submit=True):
-    nom = st.text_input("Nom ou ID Étudiant")
-    etude = st.slider("Heures d'étude / jour", 0, 15, 5)
-    sommeil = st.slider("Heures de sommeil / nuit", 3, 12, 7)
-    presence = st.number_input("Taux de présence (%)", 0, 100, 80)
-    reseaux = st.slider("Temps Réseaux Sociaux (h/jour)", 0, 10, 2)
-    note = st.number_input("Moyenne Académique (GPA / 20)", 0.0, 20.0, 12.0)
+# --- SECTION 1 : COLLECTE (Sidebar) ---
+st.sidebar.header("📍 Enregistrer un trajet")
+with st.sidebar.form("transport_form", clear_on_submit=True):
+    origine = st.text_input("Quartier d'origine (ex: Bastos, Mvan)")
+    destination = st.text_input("Quartier de destination (ex: Poste Centrale)")
     
-    submit = st.form_submit_button("Enregistrer les données")
+    mode = st.selectbox("Mode de transport", 
+                        ["Taxi (Ramassage)", "Taxi (Course)", "Moto-Taxi", "Yango/Uber", "Bus Stecy", "Véhicule Personnel"])
+    
+    duree = st.number_input("Durée du trajet (en minutes)", min_value=1, max_value=300, value=30)
+    prix = st.number_input("Coût du trajet (CFA)", min_value=0, step=50, value=250)
+    
+    heure = st.select_slider("Heure de départ", 
+                             options=["Matin (5h-9h)", "Midi (10h-14h)", "Soir (15h-19h)", "Nuit (20h-00h)"])
+    
+    submit = st.form_submit_button("Enregistrer le trajet")
 
 if submit:
-    new_data = pd.DataFrame([[nom, etude, sommeil, presence, reseaux, note]], 
-                            columns=["Nom", "Heures_Etude", "Heures_Sommeil", "Presence_Cours", "Social_Media", "GPA"])
-    
-    # Sauvegarde
-    if os.path.exists(DATA_FILE):
-        df = pd.read_csv(DATA_FILE)
-        df = pd.concat([df, new_data], ignore_index=True)
+    if origine and destination:
+        new_entry = pd.DataFrame([[origine, destination, mode, duree, prix, heure]], 
+                                columns=["Quartier_Origine", "Quartier_Destination", "Mode_Transport", "Duree_Min", "Prix_CFA", "Heure_Depart"])
+        
+        if os.path.exists(DATA_FILE):
+            df_existing = pd.read_csv(DATA_FILE)
+            df_updated = pd.concat([df_existing, new_entry], ignore_index=True)
+        else:
+            df_updated = new_entry
+            
+        df_updated.to_csv(DATA_FILE, index=False)
+        st.sidebar.success("Trajet enregistré !")
     else:
-        df = new_data
-    
-    df.to_csv(DATA_FILE, index=False)
-    st.sidebar.success("Données enregistrées avec succès !")
+        st.sidebar.error("Veuillez remplir les quartiers.")
 
 # --- SECTION 2 : ANALYSE DESCRIPTIVE ---
 df = load_data()
 
 if not df.empty:
-    st.header("📈 Analyse Descriptive des Données")
+    st.header("📊 Tableau de bord des déplacements")
     
-    # Métriques clés
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Nombre de répondants", len(df))
-    col2.metric("Moyenne GPA", round(df["GPA"].mean(), 2))
-    col3.metric("Moyenne Étude (h)", round(df["Heures_Etude"].mean(), 1))
+    # Métriques
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total trajets", len(df))
+    c2.metric("Prix Moyen", f"{round(df['Prix_CFA'].mean(), 0)} CFA")
+    c3.metric("Temps Moyen", f"{round(df['Duree_Min'].mean(), 0)} min")
 
-    # Visualisations
-    tab1, tab2 = st.tabs(["Distributions", "Corrélations"])
-    
-    with tab1:
-        fig_hist = px.histogram(df, x="GPA", title="Distribution des Notes", color_discrete_sequence=['#636EFA'])
-        st.plotly_chart(fig_hist, use_container_width=True)
-        
-    with tab2:
-        fig_scatter = px.scatter(df, x="Heures_Etude", y="GPA", 
-                                 size="Social_Media", hover_name="Nom",
-                                 title="Lien entre Étude et Performance (Taille = Temps Réseaux Sociaux)")
+    col_left, col_right = st.columns(2)
+
+    with col_left:
+        # Graphique 1 : Répartition des modes de transport
+        fig_pie = px.pie(df, names='Mode_Transport', title="Modes de transport les plus utilisés",
+                         hole=0.4, color_discrete_sequence=px.colors.sequential.RdBu)
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    with col_right:
+        # Graphique 2 : Prix vs Durée par mode
+        fig_scatter = px.scatter(df, x="Duree_Min", y="Prix_CFA", color="Mode_Transport",
+                                 title="Relation Prix / Durée du trajet",
+                                 labels={"Duree_Min": "Durée (min)", "Prix_CFA": "Prix (FCFA)"})
         st.plotly_chart(fig_scatter, use_container_width=True)
 
-    # Affichage du tableau de données
-    with st.expander("Voir les données brutes"):
-        st.dataframe(df)
-else:
-    st.info("Aucune donnée collectée pour le moment. Utilisez le formulaire à gauche.")
+    # Analyse par heure
+    st.subheader("Occupation par tranche horaire")
+    fig_bar = px.bar(df, x="Heure_Depart", title="Nombre de déplacements par moment de la journée",
+                     color_discrete_sequence=['#FFA500'])
+    st.plotly_chart(fig_bar, use_container_width=True)
 
-# --- FOOTER ---
-st.markdown("---")
-st.caption("Application développée pour l'EC2 du module INF 232 - Analyse de données.")
+    with st.expander("Consulter la base de données brute"):
+        st.write(df)
+else:
+    st.info("En attente de données... Remplissez le formulaire à gauche pour générer les graphiques.")
